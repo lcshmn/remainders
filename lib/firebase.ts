@@ -337,6 +337,37 @@ export async function getPlugin(pluginId: string) {
 }
 
 /**
+ * Check for a pending Ko-fi grant and apply it to the user.
+ * Called after a user signs up or logs in.
+ */
+export async function applyPendingKofiGrant(userId: string, email: string, username: string): Promise<boolean> {
+  if (!db) return false;
+  try {
+    const grantDoc = await getDoc(doc(db, 'kofi_grants', email.toLowerCase()));
+    if (!grantDoc.exists()) return false;
+    const grant = grantDoc.data();
+    if (grant?.applied) return false;
+
+    // Apply the grant
+    await updateDoc(doc(db, 'users', userId), {
+      plan: 'pro',
+      planGrantedBy: 'kofi',
+      planGrantedAt: Timestamp.now(),
+    });
+    if (username) {
+      try {
+        await updateDoc(doc(db, 'configs', username.toLowerCase()), { plan: 'pro' });
+      } catch { /* config may not exist yet */ }
+    }
+    await updateDoc(doc(db, 'kofi_grants', email.toLowerCase()), { applied: true });
+    return true;
+  } catch (error) {
+    console.error('Error applying Ko-fi grant:', error);
+    return false;
+  }
+}
+
+/**
  * Subscribe to real-time user profile updates.
  * Returns an unsubscribe function. Callback receives null when the doc doesn't exist.
  */

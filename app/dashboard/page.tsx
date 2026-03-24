@@ -8,7 +8,7 @@
 import { useEffect, useState, useRef } from 'react';
 import { useAuth } from '@/lib/auth-context';
 import { useRouter } from 'next/navigation';
-import { saveUserProfile, saveUserConfig, isUsernameAvailable, getUserConfigByUsername } from '@/lib/firebase';
+import { saveUserProfile, saveUserConfig, isUsernameAvailable, getUserConfigByUsername, applyPendingKofiGrant } from '@/lib/firebase';
 import { UserConfig, DeviceModel, ViewMode, Plugin, PluginConfig, TextElement, DaysLayoutMode, BackgroundImage } from '@/lib/types';
 import ViewModeToggle from '@/components/ViewModeToggle';
 import BirthDateInput from '@/components/BirthDateInput';
@@ -70,6 +70,10 @@ export default function DashboardPage() {
   // Background image state
   const [backgroundImage, setBackgroundImage] = useState<BackgroundImage | null>(null);
   const [backgroundExpanded, setBackgroundExpanded] = useState(false);
+
+  // Ko-fi email state
+  const [kofiEmail, setKofiEmail] = useState('');
+  const [kofiStatus, setKofiStatus] = useState<'idle' | 'checking' | 'granted' | 'not_found' | 'already_pro'>('idle');
 
   // Plugin state
   const [plugins, setPlugins] = useState<PluginConfig[]>([]);
@@ -360,6 +364,10 @@ export default function DashboardPage() {
     );
     
     if (success) {
+      // Check if this user donated on Ko-fi before signing up
+      if (user.email) {
+        await applyPendingKofiGrant(user.uid, user.email, username);
+      }
       await refreshProfile();
       // Initialize default config
       await saveConfig();
@@ -368,6 +376,14 @@ export default function DashboardPage() {
     }
     
     setSavingUsername(false);
+  };
+
+  const handleKofiEmailCheck = async () => {
+    if (!user || !kofiEmail.trim() || !userProfile?.username) return;
+    if (isPro) { setKofiStatus('already_pro'); return; }
+    setKofiStatus('checking');
+    const granted = await applyPendingKofiGrant(user.uid, kofiEmail.trim(), userProfile.username);
+    setKofiStatus(granted ? 'granted' : 'not_found');
   };
 
   const handleThemeChange = (themeName: string) => {
@@ -1282,6 +1298,43 @@ export default function DashboardPage() {
             {plugins.filter(p => p.enabled).length} plugin{plugins.filter(p => p.enabled).length !== 1 ? 's' : ''} enabled
           </div>
           
+          {/* Ko-fi donation unlock */}
+          {!isPro && (
+            <div className="p-4 bg-neutral-900 border border-neutral-800 rounded-lg space-y-3">
+              <div>
+                <h3 className="text-xs uppercase tracking-wider text-neutral-400">Donated on Ko-fi?</h3>
+                <p className="text-xs text-neutral-600 mt-1">
+                  If you donated with a different email, enter it here to unlock Pro.
+                </p>
+              </div>
+              <div className="flex gap-2">
+                <input
+                  type="email"
+                  value={kofiEmail}
+                  onChange={e => { setKofiEmail(e.target.value); setKofiStatus('idle'); }}
+                  placeholder="your@kofi-email.com"
+                  className="flex-1 bg-neutral-800 border border-neutral-700 px-3 py-2 text-xs text-white placeholder:text-neutral-600 rounded focus:outline-none focus:border-neutral-500"
+                />
+                <button
+                  onClick={handleKofiEmailCheck}
+                  disabled={!kofiEmail.trim() || kofiStatus === 'checking'}
+                  className="px-4 py-2 bg-neutral-700 hover:bg-neutral-600 disabled:opacity-40 text-xs text-white rounded transition-colors whitespace-nowrap"
+                >
+                  {kofiStatus === 'checking' ? 'Checking...' : 'Verify'}
+                </button>
+              </div>
+              {kofiStatus === 'granted' && (
+                <p className="text-xs text-green-400">✓ Donation verified — Pro access granted! Refresh to see changes.</p>
+              )}
+              {kofiStatus === 'not_found' && (
+                <p className="text-xs text-red-400">No donation found for that email. Contact the admin if you think this is a mistake.</p>
+              )}
+              {kofiStatus === 'already_pro' && (
+                <p className="text-xs text-neutral-500">You already have Pro access.</p>
+              )}
+            </div>
+          )}
+
           <div className="grid grid-cols-2 gap-4">
             <button
               onClick={handleExportConfig}
