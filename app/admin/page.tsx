@@ -7,17 +7,25 @@ import Link from 'next/link';
 export default function AdminDashboardPage() {
   const [users, setUsers] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+  const [fetchError, setFetchError] = useState('');
 
   useEffect(() => {
     (async () => {
       const token = await getAuthToken();
-      if (!token) return;
+      if (!token) {
+        setFetchError('Could not get auth token — try refreshing the page.');
+        setLoading(false);
+        return;
+      }
       const res = await fetch('/api/admin/users', {
         headers: { Authorization: `Bearer ${token}` },
       });
       if (res.ok) {
         const { data } = await res.json();
         setUsers(data);
+      } else {
+        const body = await res.json().catch(() => ({}));
+        setFetchError(`API error ${res.status}: ${body.error || res.statusText}`);
       }
       setLoading(false);
     })();
@@ -46,6 +54,12 @@ export default function AdminDashboardPage() {
         <h1 className="text-2xl font-mono uppercase tracking-widest text-white">Admin Dashboard</h1>
         <p className="text-xs font-mono text-neutral-600 mt-1">Remainders — control panel</p>
       </div>
+
+      {fetchError && (
+        <div className="bg-red-950/50 border border-red-900 rounded-lg px-4 py-3 text-xs font-mono text-red-400">
+          {fetchError}
+        </div>
+      )}
 
       {/* Stats grid */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
