@@ -165,7 +165,7 @@ export async function GET(
     if (config.cacheHash === cacheHash && config.cachePath) {
       const cached = await loadWallpaperCache(config.cachePath as string);
       if (cached) {
-        return new Response(cached, {
+        return new Response(new Uint8Array(cached), {
           headers: {
             'Content-Type': 'image/png',
             'Cache-Control': 'public, s-maxage=86400',

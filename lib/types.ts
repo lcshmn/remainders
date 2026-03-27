@@ -224,6 +224,12 @@ export interface UserConfig {
 
   /** Last updated timestamp */
   updatedAt: Date | null;
+
+  /** Cache key hash — set after wallpaper generation, cleared on config save */
+  cacheHash?: string | null;
+
+  /** Firebase Storage path to the cached PNG */
+  cachePath?: string | null;
 }
 
 /**
