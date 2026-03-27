@@ -11,7 +11,6 @@
 
 import { createHash } from 'crypto';
 import { getAdminFirestore, getAdminStorage } from '@/lib/firebase-admin';
-import admin from 'firebase-admin';
 
 /** Fields to exclude from the cache hash (they don't affect image output). */
 const EXCLUDE_FROM_HASH = new Set(['cacheHash', 'cachePath', 'updatedAt', 'lastActiveAt']);
@@ -99,8 +98,3 @@ export async function deleteWallpaperCache(username: string): Promise<void> {
   }
 }
 
-/** Firestore FieldValue helper for clearing cache fields on config save. */
-export const CACHE_CLEAR_FIELDS = {
-  cacheHash: admin.firestore?.FieldValue?.delete?.() ?? null,
-  cachePath: admin.firestore?.FieldValue?.delete?.() ?? null,
-};

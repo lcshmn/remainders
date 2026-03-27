@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { verifyAdminRequest } from '@/lib/verify-admin';
 import { getAdminFirestore, getAdminStorage } from '@/lib/firebase-admin';
 import admin from 'firebase-admin';
+import { randomUUID } from 'crypto';
 
 export const runtime = 'nodejs';
 
@@ -59,8 +60,19 @@ export async function POST(request: NextRequest) {
     const buffer = Buffer.from(await file.arrayBuffer());
     const bucket = storage.bucket();
     const fileRef = bucket.file(path);
-    await fileRef.save(buffer, { contentType: file.type, public: true });
-    const url = `https://storage.googleapis.com/${bucket.name}/${path}`;
+
+    // Embed a Firebase download token in the object metadata so the resulting URL
+    // matches what the client SDK's getDownloadURL() produces — works without
+    // requiring the bucket to have public IAM access.
+    const downloadToken = randomUUID();
+    await fileRef.save(buffer, {
+      contentType: file.type,
+      metadata: { firebaseStorageDownloadTokens: downloadToken },
+    });
+
+    const bucketName = bucket.name;
+    const encodedPath = encodeURIComponent(path);
+    const url = `https://firebasestorage.googleapis.com/v0/b/${bucketName}/o/${encodedPath}?alt=media&token=${downloadToken}`;
 
     await db.collection('backgrounds').doc(backgroundId).set({
       name,

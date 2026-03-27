@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { Fragment, useEffect, useState } from 'react';
 import { getAuthToken } from '@/lib/get-auth-token';
 
 interface KofiEvent {
@@ -138,9 +138,8 @@ export default function AdminKofiPage() {
                 </thead>
                 <tbody className="divide-y divide-neutral-800">
                   {events.map(event => (
-                    <>
+                    <Fragment key={event.id}>
                       <tr
-                        key={event.id}
                         className="hover:bg-neutral-800/50 transition-colors cursor-pointer"
                         onClick={() => setExpandedId(expandedId === event.id ? null : event.id)}
                       >
@@ -187,7 +186,7 @@ export default function AdminKofiPage() {
 
                       {/* Expanded row */}
                       {expandedId === event.id && (
-                        <tr key={`${event.id}-expanded`} className="bg-neutral-800/30">
+                        <tr className="bg-neutral-800/30">
                           <td colSpan={7} className="px-4 py-4">
                             <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-xs">
                               <div className="space-y-2">
@@ -230,7 +229,7 @@ export default function AdminKofiPage() {
                           </td>
                         </tr>
                       )}
-                    </>
+                    </Fragment>
                   ))}
                 </tbody>
               </table>
