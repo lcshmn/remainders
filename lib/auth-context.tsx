@@ -10,6 +10,7 @@
 import { createContext, useContext, useEffect, useState, ReactNode } from 'react';
 import { User } from 'firebase/auth';
 import { onAuthChange, signInWithGoogle, signOut, subscribeToUserProfile, updateLastActive } from '@/lib/firebase';
+import { isPlanExpired } from '@/lib/plan-utils';
 
 interface AuthContextType {
   user: User | null;
@@ -94,10 +95,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const refreshProfile = async () => {};
 
   const isAdmin = userProfile?.role === 'admin';
-  const planExpiresAt = userProfile?.planExpiresAt;
-  const planExpired = planExpiresAt
-    ? (planExpiresAt.toDate?.() ?? new Date(planExpiresAt)).getTime() < Date.now()
-    : false;
+  const planExpired = isPlanExpired(userProfile?.planExpiresAt);
   const isPro = (!planExpired && userProfile?.plan === 'pro') || isAdmin;
 
   const value = {

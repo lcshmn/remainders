@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
-import { getPresetBackgrounds, adminUploadPresetBackground, adminDeletePresetBackground } from '@/lib/firebase';
+import { getAuthToken } from '@/lib/get-auth-token';
 import { PresetBackground } from '@/lib/types';
 
 export default function AdminBackgroundsPage() {
@@ -19,8 +19,15 @@ export default function AdminBackgroundsPage() {
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const load = async () => {
-    const { data } = await getPresetBackgrounds();
-    setBackgrounds(data);
+    const token = await getAuthToken();
+    if (!token) return;
+    const res = await fetch('/api/admin/backgrounds', {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    if (res.ok) {
+      const { data } = await res.json();
+      setBackgrounds(data);
+    }
     setLoading(false);
   };
 
@@ -33,9 +40,25 @@ export default function AdminBackgroundsPage() {
     }
     setUploading(true);
     setUploadError('');
-    const { error } = await adminUploadPresetBackground(file, name.trim(), isFree, category);
-    if (error) {
-      setUploadError(error);
+
+    const token = await getAuthToken();
+    if (!token) { setUploadError('Not authenticated'); setUploading(false); return; }
+
+    const formData = new FormData();
+    formData.append('file', file);
+    formData.append('name', name.trim());
+    formData.append('isFree', String(isFree));
+    formData.append('category', category);
+
+    const res = await fetch('/api/admin/backgrounds', {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${token}` },
+      body: formData,
+    });
+
+    if (!res.ok) {
+      const body = await res.json().catch(() => ({}));
+      setUploadError(body.error || 'Upload failed');
     } else {
       setName('');
       setCategory('general');
@@ -50,7 +73,16 @@ export default function AdminBackgroundsPage() {
   const handleDelete = async (bg: PresetBackground) => {
     if (!confirm(`Delete "${bg.name}"? This cannot be undone.`)) return;
     setDeletingId(bg.id);
-    await adminDeletePresetBackground(bg.id, bg.storagePath || '');
+
+    const token = await getAuthToken();
+    if (!token) { setDeletingId(null); return; }
+
+    await fetch(`/api/admin/backgrounds/${bg.id}`, {
+      method: 'DELETE',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+      body: JSON.stringify({ storagePath: bg.storagePath || '' }),
+    });
+
     setBackgrounds(prev => prev.filter(b => b.id !== bg.id));
     setDeletingId(null);
   };
@@ -93,21 +125,11 @@ export default function AdminBackgroundsPage() {
 
         <div className="flex items-center gap-6">
           <label className="flex items-center gap-2 cursor-pointer">
-            <input
-              type="radio"
-              checked={isFree}
-              onChange={() => setIsFree(true)}
-              className="accent-[#FF6B35]"
-            />
+            <input type="radio" checked={isFree} onChange={() => setIsFree(true)} className="accent-[#FF6B35]" />
             <span className="text-sm font-mono text-neutral-400">Free</span>
           </label>
           <label className="flex items-center gap-2 cursor-pointer">
-            <input
-              type="radio"
-              checked={!isFree}
-              onChange={() => setIsFree(false)}
-              className="accent-[#FF6B35]"
-            />
+            <input type="radio" checked={!isFree} onChange={() => setIsFree(false)} className="accent-[#FF6B35]" />
             <span className="text-sm font-mono text-neutral-400">Pro only</span>
           </label>
         </div>
@@ -161,15 +183,9 @@ export default function AdminBackgroundsPage() {
           <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-4 p-4">
             {backgrounds.map(bg => (
               <div key={bg.id} className="group relative bg-neutral-800 rounded-lg overflow-hidden">
-                {/* Thumbnail */}
                 <div className="aspect-[9/16] relative">
                   {/* eslint-disable-next-line @next/next/no-img-element */}
-                  <img
-                    src={bg.thumbnailUrl || bg.url}
-                    alt={bg.name}
-                    className="w-full h-full object-cover"
-                  />
-                  {/* Overlay on hover */}
+                  <img src={bg.thumbnailUrl || bg.url} alt={bg.name} className="w-full h-full object-cover" />
                   <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
                     <button
                       onClick={() => handleDelete(bg)}
@@ -180,14 +196,11 @@ export default function AdminBackgroundsPage() {
                     </button>
                   </div>
                 </div>
-                {/* Info */}
                 <div className="p-2">
                   <div className="text-xs font-mono text-white truncate">{bg.name}</div>
                   <div className="flex items-center gap-1 mt-0.5">
                     <span className="text-xs font-mono text-neutral-500">{bg.category || 'general'}</span>
-                    <span className={`text-xs font-mono px-1.5 py-0 rounded ${
-                      bg.isFree ? 'text-green-500' : 'text-[#FF6B35]'
-                    }`}>
+                    <span className={`text-xs font-mono px-1.5 py-0 rounded ${bg.isFree ? 'text-green-500' : 'text-[#FF6B35]'}`}>
                       {bg.isFree ? 'FREE' : 'PRO'}
                     </span>
                   </div>

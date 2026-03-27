@@ -269,6 +269,9 @@ export async function saveUserConfig(username: string, config: any) {
     if (configToSave.backgroundImage == null) {
       configToSave.backgroundImage = deleteField();
     }
+    // Clear cached wallpaper so next request regenerates with the new config
+    configToSave.cacheHash = deleteField();
+    configToSave.cachePath = deleteField();
 
     await setDoc(doc(db, 'configs', usernameLower), {
       ...configToSave,

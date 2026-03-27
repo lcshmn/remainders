@@ -80,7 +80,7 @@ export default function DashboardPage() {
 
   // Ko-fi email state
   const [kofiEmail, setKofiEmail] = useState('');
-  const [kofiStatus, setKofiStatus] = useState<'idle' | 'checking' | 'granted' | 'not_found' | 'already_pro'>('idle');
+  const [kofiStatus, setKofiStatus] = useState<'idle' | 'checking' | 'granted' | 'not_found' | 'already_pro' | 'invalid_email'>('idle');
 
   // Plugin state
   const [plugins, setPlugins] = useState<PluginConfig[]>([]);
@@ -388,6 +388,8 @@ export default function DashboardPage() {
   const handleKofiEmailCheck = async () => {
     if (!user || !kofiEmail.trim() || !userProfile?.username) return;
     if (isPro) { setKofiStatus('already_pro'); return; }
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(kofiEmail.trim())) { setKofiStatus('invalid_email'); return; }
     setKofiStatus('checking');
     const granted = await applyPendingKofiGrant(user.uid, kofiEmail.trim(), userProfile.username);
     setKofiStatus(granted ? 'granted' : 'not_found');
@@ -1436,6 +1438,9 @@ export default function DashboardPage() {
               )}
               {kofiStatus === 'already_pro' && (
                 <p className="text-xs text-neutral-500">You already have Pro access.</p>
+              )}
+              {kofiStatus === 'invalid_email' && (
+                <p className="text-xs text-yellow-500">Please enter a valid email address.</p>
               )}
             </div>
           )}

@@ -21,6 +21,7 @@ export function getAdminApp(): admin.app.App | null {
     if (!admin.apps.length) {
       adminApp = admin.initializeApp({
         credential: admin.credential.cert(serviceAccount),
+        storageBucket: process.env.NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET,
       });
     } else {
       adminApp = admin.apps[0] as admin.app.App;
@@ -35,4 +36,9 @@ export function getAdminApp(): admin.app.App | null {
 export function getAdminFirestore(): admin.firestore.Firestore | null {
   const app = getAdminApp();
   return app ? admin.firestore(app) : null;
+}
+
+export function getAdminStorage(): admin.storage.Storage | null {
+  const app = getAdminApp();
+  return app ? admin.storage(app) : null;
 }

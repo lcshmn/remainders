@@ -1,22 +1,23 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { adminGetAllUsers, adminUpdateUserPlan, adminClearUserBackground } from '@/lib/firebase';
+import { getAuthToken } from '@/lib/get-auth-token';
+import { isPlanExpired } from '@/lib/plan-utils';
 
 type PlanFilter = 'all' | 'free' | 'pro';
 
-function formatDate(ts: any): string {
-  if (!ts) return '—';
-  const ms = ts.seconds ? ts.seconds * 1000 : ts.toDate?.()?.getTime?.();
-  if (!ms) return '—';
-  return new Date(ms).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' });
+function formatDate(iso: any): string {
+  if (!iso) return '—';
+  const d = new Date(iso);
+  if (isNaN(d.getTime())) return '—';
+  return d.toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' });
 }
 
-function timeAgo(ts: any): string {
-  if (!ts) return 'never';
-  const ms = ts.seconds ? ts.seconds * 1000 : ts.toDate?.()?.getTime?.();
-  if (!ms) return 'never';
-  const diff = Date.now() - ms;
+function timeAgo(iso: any): string {
+  if (!iso) return 'never';
+  const d = new Date(iso);
+  if (isNaN(d.getTime())) return 'never';
+  const diff = Date.now() - d.getTime();
   const mins = Math.floor(diff / 60000);
   if (mins < 1) return 'just now';
   if (mins < 60) return `${mins}m ago`;
@@ -24,13 +25,6 @@ function timeAgo(ts: any): string {
   if (hrs < 24) return `${hrs}h ago`;
   const days = Math.floor(hrs / 24);
   return `${days}d ago`;
-}
-
-/** Returns true if a Firestore-style timestamp is in the past */
-function isExpired(ts: any): boolean {
-  if (!ts) return false;
-  const ms = ts.seconds ? ts.seconds * 1000 : ts.toDate?.()?.getTime?.();
-  return ms ? ms < Date.now() : false;
 }
 
 /** Default expiry = today + 30 days, formatted as YYYY-MM-DD for <input type="date"> */
@@ -53,22 +47,29 @@ export default function AdminUsersPage() {
   const [expiryDate, setExpiryDate] = useState<string>(defaultExpiryValue());
 
   const loadUsers = async () => {
-    const { data } = await adminGetAllUsers();
-    setUsers(data);
+    const token = await getAuthToken();
+    if (!token) return;
+    const res = await fetch('/api/admin/users', {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    if (res.ok) {
+      const { data } = await res.json();
+      setUsers(data);
+    }
     setLoading(false);
   };
 
   useEffect(() => { loadUsers(); }, []);
 
   const filtered = users.filter(u => {
-    const effectivePlan = isExpired(u.planExpiresAt) ? 'free' : (u.plan || 'free');
+    const effectivePlan = isPlanExpired(u.planExpiresAt) ? 'free' : (u.plan || 'free');
     const matchesPlan = planFilter === 'all' || effectivePlan === planFilter;
     const q = search.toLowerCase();
     const matchesSearch = !q || (u.username || '').includes(q) || (u.email || '').includes(q);
     return matchesPlan && matchesSearch;
   }).sort((a, b) => {
-    const aTime = a.createdAt?.seconds ?? 0;
-    const bTime = b.createdAt?.seconds ?? 0;
+    const aTime = a.createdAt ? new Date(a.createdAt).getTime() : 0;
+    const bTime = b.createdAt ? new Date(b.createdAt).getTime() : 0;
     return bTime - aTime;
   });
 
@@ -77,23 +78,26 @@ export default function AdminUsersPage() {
     setExpiryDate(defaultExpiryValue());
   };
 
-  const cancelGrantPro = () => {
-    setGrantingUserId(null);
-  };
+  const cancelGrantPro = () => setGrantingUserId(null);
 
   const confirmGrantPro = async (userId: string, username: string) => {
     setUpdating(userId);
     setUpdateError('');
     setGrantingUserId(null);
-    const expiresAt = expiryDate ? new Date(expiryDate + 'T23:59:59') : null;
-    const { error } = await adminUpdateUserPlan(userId, 'pro', username, expiresAt);
-    if (error) {
-      setUpdateError(`Failed to grant Pro: ${error}`);
+    const expiresAt = expiryDate ? new Date(expiryDate + 'T23:59:59').toISOString() : null;
+    const token = await getAuthToken();
+    if (!token) { setUpdateError('Not authenticated'); setUpdating(null); return; }
+    const res = await fetch(`/api/admin/users/${userId}/plan`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+      body: JSON.stringify({ plan: 'pro', username, expiresAt }),
+    });
+    if (!res.ok) {
+      const body = await res.json().catch(() => ({}));
+      setUpdateError(`Failed to grant Pro: ${body.error || res.statusText}`);
     } else {
       setUsers(prev => prev.map(u =>
-        u.id === userId
-          ? { ...u, plan: 'pro', planExpiresAt: expiresAt ? { seconds: expiresAt.getTime() / 1000 } : null }
-          : u
+        u.id === userId ? { ...u, plan: 'pro', planExpiresAt: expiresAt } : u
       ));
     }
     setUpdating(null);
@@ -102,11 +106,17 @@ export default function AdminUsersPage() {
   const handleRevokePro = async (userId: string, username: string) => {
     setUpdating(userId);
     setUpdateError('');
-    const { error } = await adminUpdateUserPlan(userId, 'free', username);
-    if (error) {
-      setUpdateError(`Failed to revoke Pro: ${error}`);
+    const token = await getAuthToken();
+    if (!token) { setUpdateError('Not authenticated'); setUpdating(null); return; }
+    const res = await fetch(`/api/admin/users/${userId}/plan`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+      body: JSON.stringify({ plan: 'free', username }),
+    });
+    if (!res.ok) {
+      const body = await res.json().catch(() => ({}));
+      setUpdateError(`Failed to revoke Pro: ${body.error || res.statusText}`);
     } else {
-      if (username) await adminClearUserBackground(username);
       setUsers(prev => prev.map(u =>
         u.id === userId ? { ...u, plan: 'free', planExpiresAt: null } : u
       ));
@@ -185,7 +195,7 @@ export default function AdminUsersPage() {
                 </tr>
               ) : (
                 filtered.map(u => {
-                  const expired = isExpired(u.planExpiresAt);
+                  const expired = isPlanExpired(u.planExpiresAt);
                   const effectivePlan = expired ? 'free' : (u.plan || 'free');
                   const isPro = effectivePlan === 'pro';
 
@@ -220,7 +230,6 @@ export default function AdminUsersPage() {
                       </td>
                       <td className="px-4 py-3 text-right">
                         {grantingUserId === u.id ? (
-                          /* Inline date picker for Pro expiry */
                           <div className="flex items-center justify-end gap-2 flex-wrap">
                             <input
                               type="date"

@@ -39,6 +39,9 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
           <Link href="/admin/backgrounds" className="text-sm font-mono uppercase tracking-wider text-neutral-500 hover:text-white transition-colors">
             Backgrounds
           </Link>
+          <Link href="/admin/kofi" className="text-sm font-mono uppercase tracking-wider text-neutral-500 hover:text-white transition-colors">
+            Ko-fi
+          </Link>
         </div>
         <div className="flex items-center gap-4">
           <span className="text-xs font-mono text-neutral-600">{userProfile?.username}</span>

@@ -3,6 +3,7 @@
  *
  * Ko-fi sends a form POST with a `data` field containing JSON when someone donates.
  * We verify the token, find the user by email, and grant them Pro access.
+ * Every event (success, pending, error) is logged to /kofi_events in Firestore.
  *
  * Set up in Ko-fi: Account → API → Webhook URL → https://yourdomain.com/api/webhooks/kofi
  */
@@ -30,7 +31,41 @@ interface KofiPayload {
   tier_name: string | null;
 }
 
+interface KofiEvent {
+  type: string;
+  email: string;
+  fromName: string;
+  amount: string;
+  currency: string;
+  message: string | null;
+  kofiTransactionId: string;
+  tierName: string | null;
+  isSubscription: boolean;
+  isFirstSubscription: boolean;
+  receivedAt: admin.firestore.FieldValue;
+  status: 'success' | 'pending_signup' | 'error';
+  errorDetails?: string;
+  userId?: string;
+  username?: string;
+}
+
 export async function POST(request: NextRequest) {
+  const db = getAdminFirestore();
+
+  const logEvent = async (event: Omit<KofiEvent, 'receivedAt'>) => {
+    if (!db) return;
+    try {
+      await db.collection('kofi_events').add({
+        ...event,
+        receivedAt: admin.firestore.FieldValue.serverTimestamp(),
+      });
+    } catch (err) {
+      console.error('Ko-fi: failed to write event log:', err);
+    }
+  };
+
+  let payload: KofiPayload | null = null;
+
   try {
     // Ko-fi sends application/x-www-form-urlencoded with a `data` field
     const formData = await request.formData();
@@ -40,7 +75,6 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Missing data field' }, { status: 400 });
     }
 
-    let payload: KofiPayload;
     try {
       payload = JSON.parse(raw);
     } catch {
@@ -49,22 +83,32 @@ export async function POST(request: NextRequest) {
 
     // Verify Ko-fi token
     const expectedToken = process.env.KOFI_VERIFICATION_TOKEN;
-    if (!expectedToken || payload.verification_token !== expectedToken) {
+    if (!expectedToken || payload!.verification_token !== expectedToken) {
       console.warn('Ko-fi webhook: invalid verification token');
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    const donorEmail = payload.email?.toLowerCase();
+    const p = payload!;
+    const donorEmail = p.email?.toLowerCase();
     if (!donorEmail) {
       return NextResponse.json({ error: 'No email in payload' }, { status: 400 });
     }
 
-    console.log(`Ko-fi webhook: ${payload.type} from ${payload.from_name} (${donorEmail}), amount: ${payload.amount} ${payload.currency}`);
+    const baseEvent = {
+      type: p.type,
+      email: donorEmail,
+      fromName: p.from_name,
+      amount: p.amount,
+      currency: p.currency,
+      message: p.message ?? null,
+      kofiTransactionId: p.kofi_transaction_id,
+      tierName: p.tier_name ?? null,
+      isSubscription: p.is_subscription_payment,
+      isFirstSubscription: p.is_first_subscription_payment,
+    };
 
-    const db = getAdminFirestore();
     if (!db) {
       console.error('Ko-fi webhook: Admin Firestore not available');
-      // Return 200 so Ko-fi doesn't retry — log the event manually
       return NextResponse.json({ ok: true, note: 'Admin SDK not configured' });
     }
 
@@ -76,19 +120,19 @@ export async function POST(request: NextRequest) {
       const pendingExpiresAt = new Date();
       pendingExpiresAt.setDate(pendingExpiresAt.getDate() + 30);
 
-      // User hasn't signed up yet — store the grant so it can be applied on first login
       await db.collection('kofi_grants').doc(donorEmail).set({
         email: donorEmail,
-        from_name: payload.from_name,
-        amount: payload.amount,
-        currency: payload.currency,
-        type: payload.type,
-        kofi_transaction_id: payload.kofi_transaction_id,
+        from_name: p.from_name,
+        amount: p.amount,
+        currency: p.currency,
+        type: p.type,
+        kofi_transaction_id: p.kofi_transaction_id,
         grantedAt: admin.firestore.FieldValue.serverTimestamp(),
         planExpiresAt: admin.firestore.Timestamp.fromDate(pendingExpiresAt),
         applied: false,
       });
-      console.log(`Ko-fi webhook: no user found for ${donorEmail} — stored pending grant`);
+
+      await logEvent({ ...baseEvent, status: 'pending_signup' });
       return NextResponse.json({ ok: true, status: 'pending_signup' });
     }
 
@@ -99,11 +143,15 @@ export async function POST(request: NextRequest) {
 
     // Grant Pro to all matching users (should be exactly one)
     const batch = db.batch();
+    let grantedUserId: string | undefined;
+    let grantedUsername: string | undefined;
+
     for (const userDoc of usersSnapshot.docs) {
       const userData = userDoc.data();
       const username = userData.username as string | undefined;
+      grantedUserId = userDoc.id;
+      grantedUsername = username;
 
-      // Update /users/{userId}
       batch.update(userDoc.ref, {
         plan: 'pro',
         planGrantedBy: 'kofi',
@@ -111,7 +159,6 @@ export async function POST(request: NextRequest) {
         planExpiresAt: expiresAtTs,
       });
 
-      // Sync plan + expiry into /configs/{username} so the wallpaper API picks it up
       if (username) {
         const configRef = db.collection('configs').doc(username.toLowerCase());
         batch.update(configRef, { plan: 'pro', planExpiresAt: expiresAtTs });
@@ -125,11 +172,33 @@ export async function POST(request: NextRequest) {
       await pendingGrant.ref.update({ applied: true });
     }
 
-    console.log(`Ko-fi webhook: Pro granted to ${donorEmail}`);
+    await logEvent({
+      ...baseEvent,
+      status: 'success',
+      userId: grantedUserId,
+      username: grantedUsername,
+    });
+
     return NextResponse.json({ ok: true, status: 'pro_granted' });
 
   } catch (error: any) {
     console.error('Ko-fi webhook error:', error);
+
+    await logEvent({
+      type: payload?.type ?? 'unknown',
+      email: payload?.email?.toLowerCase() ?? 'unknown',
+      fromName: payload?.from_name ?? 'unknown',
+      amount: payload?.amount ?? '0',
+      currency: payload?.currency ?? 'USD',
+      message: payload?.message ?? null,
+      kofiTransactionId: payload?.kofi_transaction_id ?? 'unknown',
+      tierName: payload?.tier_name ?? null,
+      isSubscription: payload?.is_subscription_payment ?? false,
+      isFirstSubscription: payload?.is_first_subscription_payment ?? false,
+      status: 'error',
+      errorDetails: error.message,
+    });
+
     // Always return 200 to prevent Ko-fi from retrying on server errors
     return NextResponse.json({ ok: true, error: error.message }, { status: 200 });
   }

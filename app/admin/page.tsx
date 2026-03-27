@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { adminGetAllUsers } from '@/lib/firebase';
+import { getAuthToken } from '@/lib/get-auth-token';
 import Link from 'next/link';
 
 export default function AdminDashboardPage() {
@@ -9,10 +9,18 @@ export default function AdminDashboardPage() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    adminGetAllUsers().then(({ data }) => {
-      setUsers(data);
+    (async () => {
+      const token = await getAuthToken();
+      if (!token) return;
+      const res = await fetch('/api/admin/users', {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (res.ok) {
+        const { data } = await res.json();
+        setUsers(data);
+      }
       setLoading(false);
-    });
+    })();
   }, []);
 
   const totalUsers = users.length;
@@ -21,10 +29,8 @@ export default function AdminDashboardPage() {
 
   const oneDayAgo = Date.now() - 24 * 60 * 60 * 1000;
   const activeToday = users.filter(u => {
-    const ts = u.lastActiveAt?.seconds
-      ? u.lastActiveAt.seconds * 1000
-      : u.lastActiveAt?.toDate?.()?.getTime?.();
-    return ts && ts > oneDayAgo;
+    if (!u.lastActiveAt) return false;
+    return new Date(u.lastActiveAt).getTime() > oneDayAgo;
   }).length;
 
   const stats = [
@@ -52,7 +58,7 @@ export default function AdminDashboardPage() {
       </div>
 
       {/* Quick links */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
         <Link href="/admin/users"
           className="block bg-neutral-900 border border-neutral-800 rounded-lg p-6 hover:border-neutral-600 transition-colors group"
         >
@@ -73,6 +79,16 @@ export default function AdminDashboardPage() {
             Upload and manage preset background images (free & pro)
           </p>
         </Link>
+        <Link href="/admin/kofi"
+          className="block bg-neutral-900 border border-neutral-800 rounded-lg p-6 hover:border-neutral-600 transition-colors group"
+        >
+          <h2 className="text-sm font-mono uppercase tracking-wider text-neutral-400 group-hover:text-white transition-colors mb-2">
+            Ko-fi Events →
+          </h2>
+          <p className="text-xs font-mono text-neutral-600">
+            View all donations, subscriptions, errors, and pending grants
+          </p>
+        </Link>
       </div>
 
       {/* Recent users */}
@@ -84,8 +100,8 @@ export default function AdminDashboardPage() {
           <div className="divide-y divide-neutral-800">
             {[...users]
               .sort((a, b) => {
-                const aTime = a.createdAt?.seconds ?? 0;
-                const bTime = b.createdAt?.seconds ?? 0;
+                const aTime = a.createdAt ? new Date(a.createdAt).getTime() : 0;
+                const bTime = b.createdAt ? new Date(b.createdAt).getTime() : 0;
                 return bTime - aTime;
               })
               .slice(0, 5)
