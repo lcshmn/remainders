@@ -1,16 +1,17 @@
 FROM node:20-alpine
-WORKDIR /app
+RUN apk add --no-cache libc6-compat
 
-RUN apk add --no-cache openssl
+WORKDIR /app
 
 COPY package.json package-lock.json ./
 RUN npm ci
 
 COPY . .
 
-RUN npx prisma generate
+ENV NODE_OPTIONS="--max-old-space-size=1536"
 
 RUN npm run build
 
 EXPOSE 3000
+
 CMD ["npm", "start"]
