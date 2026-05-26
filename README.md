@@ -4,7 +4,6 @@
 
 **Memento Mori.** Your daily reminder to live intentionally. Generate time-aware wallpapers for your phone lock screen.
 
-[![Live Demo](https://img.shields.io/badge/Live%20Demo-remainders.vercel.app-black)](https://remainders.vercel.app/)
 [![Ko-fi](https://img.shields.io/badge/Support-Ko--fi-FF5E5B)](https://ko-fi.com/ti003)
 
 ## Features
@@ -17,7 +16,7 @@
 
 ## How to Use
 
-**Quick Start:** Visit [remainders.vercel.app](https://remainders.vercel.app/) and use it instantly without login.
+**Quick Start:** You can run it locally for now (see setup below).
 
 **Full Customization:**
 1. Sign in with Google account 
