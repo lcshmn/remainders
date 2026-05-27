@@ -2,10 +2,9 @@
 FROM node:22-bookworm-slim AS builder
 WORKDIR /app
 
-# Installiere wichtige SSL-Bibliotheken und Build-Tools
+# Nur die absolut notwendigen Build-Tools für isolated-vm installieren
 RUN apt-get update && apt-get install -y \
     openssl \
-    libssl3 \
     python3 \
     make \
     g++ \
@@ -18,12 +17,7 @@ RUN npm ci --legacy-peer-deps
 
 COPY . .
 
-# Dummy-DATABASE_URL und Prisma-Spezifikation für Debian-Systeme
-ENV DATABASE_URL="postgresql://dummy:dummy@localhost:5432/dummy"
-ENV PRISMA_CLI_QUERY_ENGINE_TYPE="binary"
-ENV PRISMA_CLIENT_ENGINE_TYPE="binary"
-RUN npx prisma generate
-
+# Wir überspringen die Prisma-Generierung hier komplett!
 ENV NODE_OPTIONS="--max-old-space-size=2048"
 ENV NEXT_TELEMETRY_DISABLED=1
 RUN npm run build
@@ -35,24 +29,23 @@ WORKDIR /app
 ENV NODE_ENV=production
 ENV NEXT_TELEMETRY_DISABLED=1
 
+# SSL-Support für Prisma zur Laufzeit bereitstellen
 RUN apt-get update && apt-get install -y \
     openssl \
     libssl3 \
     ca-certificates \
     && rm -rf /var/lib/apt/lists/*
 
+# Gesamten Build und Prisma-Konstrukte übertragen
 COPY --from=builder /app/public ./public
 COPY --from=builder /app/.next/standalone ./
 COPY --from=builder /app/.next/static ./.next/static
 COPY --from=builder /app/prisma ./prisma
 COPY --from=builder /app/package.json ./package.json
-
-ENV DATABASE_URL="postgresql://dummy:dummy@localhost:5432/dummy"
-ENV PRISMA_CLI_QUERY_ENGINE_TYPE="binary"
-ENV PRISMA_CLIENT_ENGINE_TYPE="binary"
-RUN npx prisma generate
+COPY --from=builder /app/node_modules ./node_modules
 
 EXPOSE 3000
 ENV PORT=3000
 
-CMD npx prisma db push && node server.js
+# Prisma generiert sich JETZT erst, schiebt die Tabellen in die DB und startet die App
+CMD npx prisma generate && npx prisma db push && node server.js
