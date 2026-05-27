@@ -1,18 +1,21 @@
 # --- BUILD STAGE ---
-# Wir gehen zurück auf Node 16 (Debian), was perfekt zu den älteren Paketen des Repositories passt
-FROM node:16-bullseye-slim AS builder
+# Node 22 (Bookworm-Slim) erfüllt die Anforderungen von isolated-vm (>=22.0.0)
+FROM node:22-bookworm-slim AS builder
 WORKDIR /app
 
-# Systemabhängigkeiten installieren
+# Installiere Compiler-Werkzeuge, die isolated-vm zum Kompilieren des C++-Codes benötigt
 RUN apt-get update && apt-get install -y \
     openssl \
+    python3 \
+    make \
+    g++ \
     ca-certificates \
     && rm -rf /var/lib/apt/lists/*
 
-COPY package.json ./
+COPY package.json package-lock.json* ./
 
-# Wir installieren mit abgeschalteten Audits/Fundings und erzwingen die Installation älterer Peer-Abhängigkeiten
-RUN npm install --legacy-peer-deps --no-audit --no-fund
+# Installation mit aktivierten Flags für native Builds
+RUN npm ci --legacy-peer-deps
 
 COPY . .
 
@@ -24,7 +27,7 @@ ENV NEXT_TELEMETRY_DISABLED=1
 RUN npm run build
 
 # --- RUN STAGE ---
-FROM node:16-bullseye-slim AS runner
+FROM node:22-bookworm-slim AS runner
 WORKDIR /app
 
 ENV NODE_ENV=production
