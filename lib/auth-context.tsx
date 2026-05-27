@@ -1,21 +1,25 @@
-/**
- * Authentication Context Provider
- * 
- * Manages user authentication state across the application.
- * Provides current user, loading state, and auth functions to all components.
- */
-
 'use client';
 
 import { createContext, useContext, useEffect, useState, ReactNode } from 'react';
-import { User } from 'firebase/auth';
-import { onAuthChange, signInWithGoogle, signOut, subscribeToUserProfile, updateLastActive } from '@/lib/firebase';
-import { isPlanExpired } from '@/lib/plan-utils';
+
+type SelfHostedUser = {
+  uid: string;
+  email: string;
+  displayName: string;
+  photoURL?: string | null;
+};
+
+type SelfHostedProfile = SelfHostedUser & {
+  username: string;
+  role: 'admin';
+  plan: 'pro';
+  planExpiresAt: any | null;
+};
 
 interface AuthContextType {
-  user: User | null;
+  user: SelfHostedUser | null;
   loading: boolean;
-  userProfile: any | null;
+  userProfile: SelfHostedProfile | null;
   isAdmin: boolean;
   isPro: boolean;
   signIn: () => Promise<void>;
@@ -39,74 +43,63 @@ export function useAuth() {
 }
 
 export function AuthProvider({ children }: { children: ReactNode }) {
-  const [user, setUser] = useState<User | null>(null);
-  const [userProfile, setUserProfile] = useState<any | null>(null);
+  const [user, setUser] = useState<SelfHostedUser | null>(null);
+  const [userProfile, setUserProfile] = useState<SelfHostedProfile | null>(null);
   const [loading, setLoading] = useState(true);
 
-  // Subscribe to auth state changes + real-time profile listener
+  const loadSession = async () => {
+    setLoading(true);
+    try {
+      const res = await fetch('/api/auth/session', { cache: 'no-store' });
+      const session = await res.json();
+      setUser(session.user);
+      setUserProfile(session.userProfile);
+    } catch {
+      setUser(null);
+      setUserProfile(null);
+    } finally {
+      setLoading(false);
+    }
+  };
+
   useEffect(() => {
-    let profileUnsub: (() => void) | null = null;
-
-    const authUnsub = onAuthChange((firebaseUser) => {
-      setUser(firebaseUser);
-
-      // Clean up previous profile listener
-      if (profileUnsub) {
-        profileUnsub();
-        profileUnsub = null;
-      }
-
-      if (firebaseUser) {
-        // Real-time listener — updates immediately when admin changes plan/role
-        profileUnsub = subscribeToUserProfile(firebaseUser.uid, (data) => {
-          setUserProfile(data);
-          setLoading(false);
-        });
-        updateLastActive(firebaseUser.uid);
-      } else {
-        setUserProfile(null);
-        setLoading(false);
-      }
-    });
-
-    return () => {
-      authUnsub();
-      if (profileUnsub) profileUnsub();
-    };
+    loadSession();
   }, []);
 
   const handleSignIn = async () => {
-    const { user, error } = await signInWithGoogle();
-    if (error) {
-      console.error('Sign in error:', error);
-      alert('Failed to sign in: ' + error);
+    const password = window.prompt('Admin password');
+    if (!password) return;
+
+    const res = await fetch('/api/auth/login', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ password }),
+    });
+
+    if (!res.ok) {
+      const data = await res.json().catch(() => ({}));
+      alert(data.error || 'Failed to sign in');
+      return;
     }
+
+    await loadSession();
   };
 
   const handleSignOut = async () => {
-    const { error } = await signOut();
-    if (error) {
-      console.error('Sign out error:', error);
-      alert('Failed to sign out: ' + error);
-    }
+    await fetch('/api/auth/logout', { method: 'POST' });
+    setUser(null);
+    setUserProfile(null);
   };
-
-  // No-op — profile updates are handled by the real-time listener above
-  const refreshProfile = async () => {};
-
-  const isAdmin = userProfile?.role === 'admin';
-  const planExpired = isPlanExpired(userProfile?.planExpiresAt);
-  const isPro = (!planExpired && userProfile?.plan === 'pro') || isAdmin;
 
   const value = {
     user,
     loading,
     userProfile,
-    isAdmin,
-    isPro,
+    isAdmin: !!userProfile,
+    isPro: !!userProfile,
     signIn: handleSignIn,
     signOut: handleSignOut,
-    refreshProfile,
+    refreshProfile: loadSession,
   };
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

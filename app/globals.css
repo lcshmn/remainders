@@ -10,6 +10,8 @@
   --muted: #404040;
   /* Dark grey for inactive/borders */
   --card-bg: #1a1a1a;
+  --font-geist-sans: Arial, Helvetica, sans-serif;
+  --font-geist-mono: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
 }
 
 body {

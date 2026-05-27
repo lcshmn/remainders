@@ -9,7 +9,8 @@
 
 import { ImageResponse } from '@vercel/og';
 import { NextRequest } from 'next/server';
-import { getUserConfigByUsername, getPlugin, logWallpaperEvent } from '@/lib/firebase-server';
+import { getPlugin, logWallpaperEvent } from '@/lib/firebase-server';
+import { getStoredUserConfig } from '@/lib/selfhost-store';
 import { Plugin, UserConfig } from '@/lib/types';
 import { isPlanExpired } from '@/lib/plan-utils';
 import { loadPluginFromCode } from '@/lib/plugin-system';
@@ -96,8 +97,9 @@ export async function GET(
       });
     }
 
-    // Fetch user configuration from Firestore
-    const { data: configData, error: configError } = await getUserConfigByUsername(username);
+    // Fetch user configuration from the self-hosted JSON store.
+    const configData = await getStoredUserConfig(username);
+    const configError = configData ? null : 'Config not found';
 
     if (configError || !configData) {
       return new Response(`User configuration not found. Please complete your setup at ${request.nextUrl.origin}/dashboard`, { 

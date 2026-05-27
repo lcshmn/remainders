@@ -1,40 +1,41 @@
-version: '3.8'
-
 services:
-  remainders-db:
-    image: postgres:15-alpine
-    container_name: remainders-db
-    restart: always
-    environment:
-      POSTGRES_USER: remainders_user
-      POSTGRES_PASSWORD: ${DB_PASSWORD}
-      POSTGRES_DB: remainders_db
-    volumes:
-      - remainders_db_data:/var/lib/postgresql/data
-    networks:
-      - db-net
-
-  remainders-app:
+  remainders:
+    image: remainders:latest
     build:
       context: .
       dockerfile: Dockerfile
-    container_name: remainders-app
-    restart: always
+      args:
+        NEXT_PUBLIC_GA_MEASUREMENT_ID: ${NEXT_PUBLIC_GA_MEASUREMENT_ID:-}
+    container_name: remainders
+    restart: unless-stopped
     environment:
-      DATABASE_URL: postgres://remainders_user:${DB_PASSWORD}@remainders-db:5432/remainders_db
-      NEXTAUTH_SECRET: ${NEXTAUTH_SECRET}
-      NEXTAUTH_URL: ${NEXTAUTH_URL}
-    depends_on:
-      - remainders-db
+      NODE_ENV: production
+      NEXT_TELEMETRY_DISABLED: "1"
+      PORT: "3000"
+      HOSTNAME: 0.0.0.0
+      NEXT_PUBLIC_GA_MEASUREMENT_ID: ${NEXT_PUBLIC_GA_MEASUREMENT_ID:-}
+      REMAINDERS_ADMIN_PASSWORD: ${REMAINDERS_ADMIN_PASSWORD:?Set REMAINDERS_ADMIN_PASSWORD in Portainer}
+      REMAINDERS_AUTH_SECRET: ${REMAINDERS_AUTH_SECRET:-}
+      REMAINDERS_USERNAME: ${REMAINDERS_USERNAME:-lucas}
+      REMAINDERS_ADMIN_EMAIL: ${REMAINDERS_ADMIN_EMAIL:-}
+      REMAINDERS_DISPLAY_NAME: ${REMAINDERS_DISPLAY_NAME:-Lucas}
+      REMAINDERS_DATA_DIR: /data
+    expose:
+      - "3000"
     networks:
       - public_net
-      - db-net
+    volumes:
+      - remainders_data:/data
+    healthcheck:
+      test: ["CMD-SHELL", "node -e \"fetch('http://127.0.0.1:3000').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))\""]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
 
 networks:
   public_net:
     external: true
-  db-net:
-    internal: true
 
 volumes:
-  remainders_db_data:
+  remainders_data:
