@@ -2,8 +2,10 @@
 FROM node:22-bookworm-slim AS builder
 WORKDIR /app
 
+# Installiere wichtige SSL-Bibliotheken und Build-Tools
 RUN apt-get update && apt-get install -y \
     openssl \
+    libssl3 \
     python3 \
     make \
     g++ \
@@ -16,8 +18,10 @@ RUN npm ci --legacy-peer-deps
 
 COPY . .
 
-# Dummy-DATABASE_URL, damit Prisma den Client ohne echte DB-Verbindung generiert
+# Dummy-DATABASE_URL und Prisma-Spezifikation für Debian-Systeme
 ENV DATABASE_URL="postgresql://dummy:dummy@localhost:5432/dummy"
+ENV PRISMA_CLI_QUERY_ENGINE_TYPE="binary"
+ENV PRISMA_CLIENT_ENGINE_TYPE="binary"
 RUN npx prisma generate
 
 ENV NODE_OPTIONS="--max-old-space-size=2048"
@@ -33,6 +37,7 @@ ENV NEXT_TELEMETRY_DISABLED=1
 
 RUN apt-get update && apt-get install -y \
     openssl \
+    libssl3 \
     ca-certificates \
     && rm -rf /var/lib/apt/lists/*
 
@@ -43,6 +48,8 @@ COPY --from=builder /app/prisma ./prisma
 COPY --from=builder /app/package.json ./package.json
 
 ENV DATABASE_URL="postgresql://dummy:dummy@localhost:5432/dummy"
+ENV PRISMA_CLI_QUERY_ENGINE_TYPE="binary"
+ENV PRISMA_CLIENT_ENGINE_TYPE="binary"
 RUN npx prisma generate
 
 EXPOSE 3000
