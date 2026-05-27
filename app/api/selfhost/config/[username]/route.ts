@@ -21,6 +21,13 @@ export async function PUT(
 
   const { username } = await params;
   const config = await request.json();
-  const data = await saveStoredUserConfig(username, config);
-  return NextResponse.json({ data, error: null });
+  try {
+    const data = await saveStoredUserConfig(username, config);
+    return NextResponse.json({ data, error: null });
+  } catch (error: any) {
+    return NextResponse.json(
+      { error: error?.message || 'Failed to save config' },
+      { status: 500 }
+    );
+  }
 }

@@ -113,7 +113,9 @@ export async function deleteUserBackground(_storagePath?: string): Promise<{ err
 }
 
 export async function getPresetBackgrounds(): Promise<{ data: PresetBackground[]; error: string | null }> {
-  return { data: [], error: null };
+  const res = await fetch('/api/admin/backgrounds', { cache: 'no-store' });
+  if (!res.ok) return { data: [], error: 'Failed to load backgrounds' };
+  return res.json();
 }
 
 export async function adminGetAllUsers(): Promise<{ data: any[]; error: string | null }> {

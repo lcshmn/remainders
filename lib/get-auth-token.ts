@@ -1,11 +1,9 @@
-import { auth } from '@/lib/firebase';
-
-/** Returns the current user's Firebase ID token, or null if not signed in. */
+/** Returns a self-hosted bearer marker when the admin cookie session exists. */
 export async function getAuthToken(): Promise<string | null> {
-  const user = auth?.currentUser;
-  if (!user) return null;
   try {
-    return await user.getIdToken();
+    const res = await fetch('/api/auth/session', { cache: 'no-store' });
+    const session = await res.json();
+    return session.authenticated ? 'selfhost' : null;
   } catch {
     return null;
   }

@@ -2,7 +2,7 @@ import 'server-only';
 
 import { promises as fs } from 'fs';
 import path from 'path';
-import { UserConfig } from '@/lib/types';
+import { PresetBackground, UserConfig } from '@/lib/types';
 
 const DATA_DIR = process.env.REMAINDERS_DATA_DIR || '/data';
 
@@ -12,6 +12,10 @@ function sanitizeUsername(username: string) {
 
 function configPath(username: string) {
   return path.join(DATA_DIR, 'configs', `${sanitizeUsername(username)}.json`);
+}
+
+function backgroundsPath() {
+  return path.join(DATA_DIR, 'backgrounds.json');
 }
 
 export async function getStoredUserConfig(username: string): Promise<UserConfig | null> {
@@ -43,4 +47,31 @@ export async function saveStoredUserConfig(username: string, config: Partial<Use
 
   await fs.writeFile(file, JSON.stringify(data, null, 2));
   return data as unknown as UserConfig;
+}
+
+export async function getStoredBackgrounds(): Promise<PresetBackground[]> {
+  try {
+    const raw = await fs.readFile(backgroundsPath(), 'utf8');
+    return JSON.parse(raw) as PresetBackground[];
+  } catch (error: any) {
+    if (error?.code === 'ENOENT') return [];
+    throw error;
+  }
+}
+
+export async function saveStoredBackground(background: PresetBackground) {
+  const file = backgroundsPath();
+  await fs.mkdir(path.dirname(file), { recursive: true });
+  const backgrounds = await getStoredBackgrounds();
+  const next = [background, ...backgrounds.filter((item) => item.id !== background.id)];
+  await fs.writeFile(file, JSON.stringify(next, null, 2));
+  return background;
+}
+
+export async function deleteStoredBackground(backgroundId: string) {
+  const file = backgroundsPath();
+  await fs.mkdir(path.dirname(file), { recursive: true });
+  const backgrounds = await getStoredBackgrounds();
+  const next = backgrounds.filter((item) => item.id !== backgroundId);
+  await fs.writeFile(file, JSON.stringify(next, null, 2));
 }
