@@ -1,0 +1,40 @@
+version: '3.8'
+
+services:
+  remainders-db:
+    image: postgres:15-alpine
+    container_name: remainders-db
+    restart: always
+    environment:
+      POSTGRES_USER: remainders_user
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
+      POSTGRES_DB: remainders_db
+    volumes:
+      - remainders_db_data:/var/lib/postgresql/data
+    networks:
+      - db-net
+
+  remainders-app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: remainders-app
+    restart: always
+    environment:
+      DATABASE_URL: postgres://remainders_user:${DB_PASSWORD}@remainders-db:5432/remainders_db
+      NEXTAUTH_SECRET: ${NEXTAUTH_SECRET}
+      NEXTAUTH_URL: ${NEXTAUTH_URL}
+    depends_on:
+      - remainders-db
+    networks:
+      - public_net
+      - db-net
+
+networks:
+  public_net:
+    external: true
+  db-net:
+    internal: true
+
+volumes:
+  remainders_db_data:
