@@ -1,18 +1,18 @@
 # --- BUILD STAGE ---
-FROM node:18-alpine AS builder
+# Wir wechseln auf Node 20 (aktueller LTS-Standard)
+FROM node:20-alpine AS builder
 WORKDIR /app
 
-# Systemabhängigkeiten installieren
-RUN apk add --no-cache libc6-compat openssl
+# Systemabhängigkeiten für Node-Gyp und Prisma installieren
+RUN apk add --no-cache libc6-compat openssl python3 make g++
 
-# Wir kopieren nur die package.json und ignorieren die package-lock.json vorerst,
-# um eine saubere und konfliktfreie Installation zu garantieren.
 COPY package.json ./
-RUN npm install --legacy-peer-deps
+
+# Wir aktivieren maximales Logging (LogLevel silly), damit wir den exakten Fehler sehen
+RUN npm install --legacy-peer-deps --loglevel silly
 
 COPY . .
 
-# Prisma-Client generieren
 RUN npx prisma generate
 
 ENV NODE_OPTIONS="--max-old-space-size=2048"
@@ -20,7 +20,7 @@ ENV NEXT_TELEMETRY_DISABLED=1
 RUN npm run build
 
 # --- RUN STAGE ---
-FROM node:18-alpine AS runner
+FROM node:20-alpine AS runner
 WORKDIR /app
 
 ENV NODE_ENV=production
