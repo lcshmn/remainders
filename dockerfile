@@ -1,21 +1,18 @@
 # --- BUILD STAGE ---
-# Wir nutzen das Debian-basierte "bookworm-slim" Image für maximale Kompatibilität
-FROM node:20-bookworm-slim AS builder
+# Wir gehen zurück auf Node 16 (Debian), was perfekt zu den älteren Paketen des Repositories passt
+FROM node:16-bullseye-slim AS builder
 WORKDIR /app
 
-# Notwendige native Abhängigkeiten für Prisma und Build-Tools installieren
+# Systemabhängigkeiten installieren
 RUN apt-get update && apt-get install -y \
     openssl \
-    python3 \
-    make \
-    g++ \
     ca-certificates \
     && rm -rf /var/lib/apt/lists/*
 
 COPY package.json ./
 
-# Frische Installation der Node-Module
-RUN npm install --legacy-peer-deps
+# Wir installieren mit abgeschalteten Audits/Fundings und erzwingen die Installation älterer Peer-Abhängigkeiten
+RUN npm install --legacy-peer-deps --no-audit --no-fund
 
 COPY . .
 
@@ -27,7 +24,7 @@ ENV NEXT_TELEMETRY_DISABLED=1
 RUN npm run build
 
 # --- RUN STAGE ---
-FROM node:20-bookworm-slim AS runner
+FROM node:16-bullseye-slim AS runner
 WORKDIR /app
 
 ENV NODE_ENV=production
