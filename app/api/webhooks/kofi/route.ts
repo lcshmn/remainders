@@ -11,6 +11,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getAdminFirestore } from '@/lib/firebase-admin';
 import admin from 'firebase-admin';
+import { timingSafeEqual } from 'crypto';
 
 export const runtime = 'nodejs';
 
@@ -67,9 +68,24 @@ export async function POST(request: NextRequest) {
   let payload: KofiPayload | null = null;
 
   try {
-    // Ko-fi sends application/x-www-form-urlencoded with a `data` field
-    const formData = await request.formData();
-    const raw = formData.get('data');
+    // Ko-fi may send form-urlencoded (standard) or occasionally with a missing/wrong
+    // Content-Type header. Parse the raw body manually to handle both cases.
+    const bodyText = await request.text();
+    let raw: string | null = null;
+
+    const contentType = request.headers.get('content-type') ?? '';
+    if (contentType.includes('application/json')) {
+      // Ko-fi sent the payload as raw JSON
+      raw = bodyText;
+    } else {
+      // Treat as URL-encoded: data=<JSON> — works even when Content-Type is wrong/missing
+      const params = new URLSearchParams(bodyText);
+      raw = params.get('data');
+      // Fallback: body might already be raw JSON without a data= wrapper
+      if (!raw && bodyText.trimStart().startsWith('{')) {
+        raw = bodyText;
+      }
+    }
 
     if (!raw || typeof raw !== 'string') {
       return NextResponse.json({ error: 'Missing data field' }, { status: 400 });
@@ -81,9 +97,19 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Invalid JSON in data field' }, { status: 400 });
     }
 
-    // Verify Ko-fi token
+    // Verify Ko-fi token — fail loudly if not configured
     const expectedToken = process.env.KOFI_VERIFICATION_TOKEN;
-    if (!expectedToken || payload!.verification_token !== expectedToken) {
+    if (!expectedToken) {
+      console.error('Ko-fi webhook: KOFI_VERIFICATION_TOKEN is not configured');
+      return NextResponse.json({ error: 'Webhook not configured' }, { status: 503 });
+    }
+
+    // Use timing-safe comparison to prevent timing attacks
+    const receivedToken = payload!.verification_token || '';
+    const tokenBuffer = Buffer.from(receivedToken);
+    const expectedBuffer = Buffer.from(expectedToken);
+    if (tokenBuffer.length !== expectedBuffer.length ||
+        !timingSafeEqual(tokenBuffer, expectedBuffer)) {
       console.warn('Ko-fi webhook: invalid verification token');
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
@@ -200,6 +226,7 @@ export async function POST(request: NextRequest) {
     });
 
     // Always return 200 to prevent Ko-fi from retrying on server errors
-    return NextResponse.json({ ok: true, error: error.message }, { status: 200 });
+    // Never expose internal error details to external callers
+    return NextResponse.json({ ok: true }, { status: 200 });
   }
 }
