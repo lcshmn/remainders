@@ -5,9 +5,10 @@ WORKDIR /app
 # Systemabhängigkeiten installieren
 RUN apk add --no-cache libc6-compat openssl
 
-# clean install erzwingen und Peer-Dependencies ignorieren
-COPY package.json package-lock.json* ./
-RUN npm ci --legacy-peer-deps
+# Wir kopieren nur die package.json und ignorieren die package-lock.json vorerst,
+# um eine saubere und konfliktfreie Installation zu garantieren.
+COPY package.json ./
+RUN npm install --legacy-peer-deps
 
 COPY . .
 
@@ -33,7 +34,6 @@ COPY --from=builder /app/.next/static ./.next/static
 COPY --from=builder /app/prisma ./prisma
 COPY --from=builder /app/package.json ./package.json
 
-# Auch hier den Prisma-Client für die Runtime bereitstellen
 RUN npx prisma generate
 
 EXPOSE 3000
